@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/Raziel7893/WindowsGSM/releases/tag/v1.25.1.22"><img src="https://img.shields.io/badge/WindowsGSM-Raziel%20v1.25.1.22-38CDD4" alt="Raziel WindowsGSM v1.25.1.22"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.2-C91F37" alt="Version 0.1.2"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.0-C91F37" alt="Version 0.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
 
@@ -19,20 +19,19 @@ This plugin installs, updates, starts and stops the official SCP: Secret Laborat
 ## Features
 
 - Installs and updates the official SCP:SL Dedicated Server through SteamCMD.
-- Uses SteamCMD App ID `996560` with anonymous login.
-- Starts `LocalAdmin.exe` from the server root.
+- Uses the current SteamCMD App ID `996560` with anonymous login.
+- Starts `LocalAdmin.exe` from the server root, as required by Northwood.
 - Passes the WindowsGSM **Server Port** as LocalAdmin's first positional argument.
 - Validates the selected port before launch.
 - Prevents accidentally specifying a second positional port in **Server Start Param**.
 - Supports WindowsGSM Embedded Console with LocalAdmin V2.
 - Adds `--printStd`, `--noSetCursor` and `--disableTrueColor` automatically while Embedded Console is enabled.
 - Sends the official LocalAdmin `exit` command for graceful shutdown before falling back to a forced kill.
-- Keeps SCP:SL server data inside `serverfiles\AppData` instead of the Windows user profile.
-- Uses Northwood's own `gamedir_for_configs: true` hoster mode.
 - Removes unrestricted Windows Firewall application exceptions for the exact `LocalAdmin.exe` and `SCPSL.exe` paths before startup.
 - Leaves narrow manually configured UDP port rules untouched.
 - Does **not** automatically accept Northwood's EULA.
-- Is ready for the official LabAPI framework bundled with current dedicated-server builds.
+- Does **not** automate SCP:SL server verification or Community Server Guideline acceptance.
+- Is ready for the official LabAPI modding framework bundled with current dedicated-server builds.
 
 ## Quick overview
 
@@ -45,8 +44,8 @@ This plugin installs, updates, starts and stops the official SCP: Secret Laborat
 | Default game port | `7777/UDP` |
 | Port increment | `1` |
 | Default max players | `20` |
+| Query method | None in WindowsGSM |
 | Embedded Console | Supported through LocalAdmin V2 |
-| Local server data | `serverfiles\AppData` |
 | Mod framework | LabAPI bundled by Northwood |
 | Firewall | Manual UDP port rules only |
 
@@ -57,6 +56,8 @@ This plugin installs, updates, starts and stops the official SCP: Secret Laborat
 - Microsoft .NET Framework 4.8 and the current Visual C++ Redistributable required by SCP:SL
 - Administrator rights for WindowsGSM when the MeFriendos firewall hardening needs to remove broad application exceptions
 
+Northwood's public hosting guide currently lists Windows 8.1/10 and notes that Windows 11 is not officially supported but should work. Windows Server editions are not explicitly listed there, so server-host compatibility should be verified in your environment.
+
 ## Plugin installation
 
 1. Download the release archive.
@@ -65,7 +66,7 @@ This plugin installs, updates, starts and stops the official SCP: Secret Laborat
 4. Add **SCP: Secret Laboratory Dedicated Server** and click **Install**.
 5. Keep `7777` as **Server Port** or choose another unused UDP port.
 6. Start the server once and review/accept Northwood's EULA yourself when LocalAdmin asks.
-7. Configure the generated SCP:SL files below the instance-local `serverfiles\AppData` directory.
+7. Configure the generated SCP:SL files under `%APPDATA%\SCP Secret Laboratory\config\<port>\`.
 8. Create a narrow inbound UDP firewall rule for the selected game port.
 
 The default **Server Start Param** is:
@@ -74,39 +75,32 @@ The default **Server Start Param** is:
 --useDefault
 ```
 
-`--useDefault` avoids the LocalAdmin configuration wizard when no LocalAdmin config exists. It does **not** accept the SCP:SL EULA.
+`--useDefault` is a LocalAdmin V2 argument. It avoids the LocalAdmin configuration wizard when no LocalAdmin config exists. It does **not** accept the SCP:SL EULA.
 
-## Server data
+## Server configuration
 
-The plugin automatically creates:
-
-```text
-<WindowsGSM>\servers\<server ID>\serverfiles\AppData\
-```
-
-and makes sure `serverfiles\hoster_policy.txt` contains:
+SCP:SL stores the gameplay configuration per port under:
 
 ```text
-gamedir_for_configs: true
+%APPDATA%\SCP Secret Laboratory\config\<port>\config_gameplay.txt
 ```
 
-This is Northwood's native hoster mode, so no junction or Windows profile redirection is needed.
-
-For server ID `12`, the path is:
+Important public-server fields include:
 
 ```text
-F:\WindowsGSM\servers\12\serverfiles\AppData\
+server_name: MeFriendos | EU | DE/EN | 16+
+server_ip: auto
+max_players: 20
+contact_email: YOUR_CONTACT_EMAIL
 ```
 
-Main gameplay config:
+For a verified server, configure the remaining server-info and Community Server Guideline requirements according to Northwood's current documentation.
 
-```text
-<WindowsGSM>\servers\<server ID>\serverfiles\AppData\config\<port>\config_gameplay.txt
-```
-
-WindowsGSM's **Server Name** field is only the WindowsGSM instance label. SCP:SL's actual browser name is controlled by `server_name` in `config_gameplay.txt`.
+WindowsGSM's **Server Name** field is kept as the WindowsGSM instance label; SCP:SL's actual browser name is controlled by `server_name` in `config_gameplay.txt`.
 
 ## Ports and firewall
+
+Current Northwood documentation requires the selected **UDP** game port. TCP is not required for the normal SCP:SL game connection.
 
 Default:
 
@@ -114,35 +108,64 @@ Default:
 | --- | --- | --- |
 | SCP:SL game traffic | UDP | `7777` |
 
-The plugin removes broad Windows Firewall application exceptions for the exact paths of `LocalAdmin.exe` and `SCPSL.exe`. Existing targeted port rules are not touched.
+For the MeFriendos firewall policy, create a narrow inbound rule for the chosen UDP port only.
+
+The plugin removes broad Windows Firewall application exceptions for the exact paths of:
+
+```text
+LocalAdmin.exe
+SCPSL.exe
+```
+
+If removal cannot be completed or verified, startup is stopped instead of silently continuing with unrestricted application access. Existing targeted port rules are not touched.
 
 ## Embedded Console
 
-When **Embed Console** is enabled in WindowsGSM, the plugin automatically adds:
+LocalAdmin V2 can mirror the game process stdout/stderr into its own output with `--printStd`. When **Embed Console** is enabled in WindowsGSM, the plugin automatically adds:
 
 ```text
 --printStd --noSetCursor --disableTrueColor
 ```
 
-Your own **Server Start Param** is appended afterwards. Existing flags are not duplicated.
+These options make LocalAdmin's output more suitable for WindowsGSM redirection while preserving command input through stdin.
 
-## EULA
+Your own **Server Start Param** remains appended after those automatically generated arguments. If you already supplied one of these flags, the plugin does not add a duplicate.
 
-The plugin intentionally does not add LocalAdmin's `--acceptEULA` flag. Accept the SCP:SL EULA yourself before using any non-interactive acceptance option.
+### EULA note
+
+The plugin intentionally does not add LocalAdmin's `--acceptEULA` flag. Accepting the EULA is a decision for the server operator.
+
+Read the SCP:SL EULA first. If you have accepted it and intentionally want LocalAdmin's non-interactive acceptance mechanism, add the official LocalAdmin argument yourself.
 
 ## Graceful shutdown
 
-The plugin first sends LocalAdmin's official `exit` command and waits for shutdown. `Process.Kill()` is only used as a last resort.
+Northwood LocalAdmin V2 exposes `exit` as the command that stops the server.
+
+The plugin therefore uses this sequence:
+
+1. If stdin is redirected for Embedded Console, write `exit` to LocalAdmin and wait up to 20 seconds.
+2. Otherwise send `exit` to the native LocalAdmin console window and wait up to 20 seconds.
+3. Use `Process.Kill()` only as a last resort if LocalAdmin does not exit.
+
+This is safer than killing `SCPSL.exe` directly because LocalAdmin remains responsible for the game process lifecycle.
 
 ## LabAPI / plugins
 
-Current SCP:SL Dedicated Server builds include Northwood's official **LabAPI** framework. This plugin does not download or modify LabAPI itself.
+Current SCP:SL Dedicated Server builds include Northwood's official **LabAPI** framework. This WindowsGSM plugin does not download or modify LabAPI itself.
 
-With local server data enabled, LabAPI uses:
+Typical Windows LabAPI locations are under:
 
 ```text
-<WindowsGSM>\servers\<server ID>\serverfiles\AppData\SCP Secret Laboratory\LabAPI\
+%APPDATA%\SCP Secret Laboratory\LabAPI\
 ```
+
+Use only plugins compatible with the current SCP:SL/LabAPI version and review their permissions and data handling before deployment.
+
+## Verification readiness
+
+This plugin only handles WindowsGSM installation and process lifecycle. It does not grant or request SCP:SL server verification.
+
+Before applying for Northwood verification, configure at minimum the public server identity/contact fields, make the server reachable on its UDP port, review the current Community Server Guidelines, and complete Northwood's verification process separately.
 
 ## Testing checklist
 
@@ -152,12 +175,13 @@ With local server data enabled, LabAPI uses:
 - Invalid or empty Server Port values are rejected.
 - A second positional port in Server Start Param is rejected.
 - LocalAdmin starts with the selected WindowsGSM Server Port as its first argument.
-- `serverfiles\AppData` is a normal directory, not a junction.
-- `serverfiles\hoster_policy.txt` contains `gamedir_for_configs: true`.
-- SCP:SL no longer writes its normal server data into the Windows user's roaming AppData directory.
+- The first start does not silently accept Northwood's EULA.
 - With Embed Console enabled, LocalAdmin output is visible in WindowsGSM.
+- With Embed Console enabled, the server process stdout/stderr is surfaced through `--printStd`.
 - Stop sends `exit` before any forced termination.
 - No broad LocalAdmin.exe or SCPSL.exe application firewall exception remains after startup.
+- A narrow manual `<port>/UDP` firewall rule remains untouched.
+- SCP:SL creates/uses its per-port configuration under `%APPDATA%\SCP Secret Laboratory\config\<port>\`.
 
 ## Project links
 
