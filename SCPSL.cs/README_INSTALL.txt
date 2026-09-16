@@ -1,5 +1,5 @@
 WindowsGSM.SCPSL - MeFriendos build
-Version 0.1.0
+Version 0.1.1
 
 INSTALL
 =======
@@ -20,11 +20,18 @@ INSTALL
    If you have already reviewed and accepted it and intentionally want non-interactive
    startup, LocalAdmin V2 also supports its own --acceptEULA option.
 
-6. Server configuration is stored outside the WindowsGSM instance at:
-   %APPDATA%\SCP Secret Laboratory\config\<port>\
+6. The plugin keeps SCP:SL data inside the matching WindowsGSM server instance.
+   For server ID 12, the data directory is:
+   F:\WindowsGSM\servers\12\ServerData\
 
-   Main file:
-   config_gameplay.txt
+   The plugin automatically enables Northwood's hoster policy and links:
+   serverfiles\AppData -> ..\ServerData
+
+   Main gameplay config:
+   ServerData\config\<port>\config_gameplay.txt
+
+   LabAPI:
+   ServerData\SCP Secret Laboratory\LabAPI\
 
 7. For a public server, create a narrow firewall rule for the selected UDP port only.
    Default: 7777/UDP
