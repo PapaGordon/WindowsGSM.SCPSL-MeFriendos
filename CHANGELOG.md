@@ -1,16 +1,22 @@
 # Changelog
 
+## 0.1.2 - 2026-09-16
+
+Simplified the local data setup.
+
+SCP:SL now uses Northwood's own hoster mode directly and keeps its generated files in:
+
+`serverfiles\AppData`
+
+No junctions, no separate `ServerData` folder and no Windows user-profile path. The plugin creates the local AppData folder and makes sure `gamedir_for_configs: true` is enabled before LocalAdmin starts.
+
+The short-lived 0.1.1 junction setup is also cleaned up automatically if the plugin finds the junction it created itself.
+
 ## 0.1.1 - 2026-09-16
 
-SCP:SL now keeps its generated server data with the matching WindowsGSM instance instead of putting it in the Windows user profile.
+SCP:SL was changed to keep its generated server data with the matching WindowsGSM instance instead of putting it in the Windows user profile.
 
-For example, server ID 12 will use:
-
-`F:\WindowsGSM\servers\12\ServerData`
-
-The plugin sets up Northwood's hoster policy automatically and links the local `serverfiles\AppData` folder to that server-specific data folder. This also keeps LocalAdmin and LabAPI data with the server.
-
-No migration code was added because this change is intended for a new server setup. The plugin also avoids touching an existing non-empty `serverfiles\AppData` folder if one is already there.
+This version used a separate `ServerData` folder with a junction from `serverfiles\AppData`. It was replaced by the simpler native hoster setup in 0.1.2.
 
 ## 0.1.0 - 2026-09-11
 
