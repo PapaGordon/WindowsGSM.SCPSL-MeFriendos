@@ -20,7 +20,7 @@ namespace WindowsGSM.Plugins
             name = "WindowsGSM.SCPSL",
             author = "MeFriendos",
             description = "WindowsGSM plugin for SCP: Secret Laboratory Dedicated Server (MeFriendos build)",
-            version = "0.1.0",
+            version = "0.1.1",
             url = "https://github.com/PapaGordon/WindowsGSM.SCPSL-MeFriendos",
             color = "#C91F37"
         };
@@ -72,6 +72,15 @@ namespace WindowsGSM.Plugins
             if (!ValidateConfiguration(out string validationError))
             {
                 Error = validationError;
+                return Task.FromResult<Process>(null);
+            }
+
+            // Northwood's hoster policy makes LocalAdmin, SCP:SL and LabAPI use a local
+            // "AppData" directory. Keep that directory outside serverfiles through a
+            // per-instance junction so all generated data stays beside the game files.
+            if (!PrepareServerLocalData(serverFiles, out string dataError))
+            {
+                Error = dataError;
                 return Task.FromResult<Process>(null);
             }
 
@@ -225,6 +234,174 @@ namespace WindowsGSM.Plugins
             }
 
             return true;
+        }
+
+        private static bool PrepareServerLocalData(string serverFiles, out string error)
+        {
+            error = null;
+
+            try
+            {
+                DirectoryInfo serverFilesDirectory = new DirectoryInfo(serverFiles);
+                if (serverFilesDirectory.Parent == null)
+                {
+                    error = $"Could not determine the WindowsGSM server directory from: {serverFiles}";
+                    return false;
+                }
+
+                string serverRoot = serverFilesDirectory.Parent.FullName;
+                string serverData = Path.Combine(serverRoot, "ServerData");
+                string appDataLink = Path.Combine(serverFiles, "AppData");
+                string hosterPolicy = Path.Combine(serverFiles, "hoster_policy.txt");
+
+                Directory.CreateDirectory(serverData);
+                EnsureHosterPolicy(hosterPolicy);
+
+                if (Directory.Exists(appDataLink))
+                {
+                    FileAttributes attributes = File.GetAttributes(appDataLink);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        if (!JunctionPointsToDirectory(appDataLink, serverData))
+                        {
+                            error = $"SCP:SL AppData junction already exists but does not point to this server's ServerData directory: {appDataLink}";
+                            return false;
+                        }
+
+                        return true;
+                    }
+
+                    if (Directory.GetFileSystemEntries(appDataLink).Length != 0)
+                    {
+                        error = $"SCP:SL local AppData already exists and is not managed by this plugin: {appDataLink}. Move or remove it before starting so ServerData can be linked safely.";
+                        return false;
+                    }
+
+                    Directory.Delete(appDataLink);
+                }
+                else if (File.Exists(appDataLink))
+                {
+                    error = $"Cannot create SCP:SL local AppData because a file already exists at: {appDataLink}";
+                    return false;
+                }
+
+                return CreateDirectoryJunction(appDataLink, serverData, out error);
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                error = $"Could not prepare SCP:SL ServerData. Start WindowsGSM as administrator. {e.Message}";
+                return false;
+            }
+            catch (Exception e)
+            {
+                error = $"Could not prepare SCP:SL ServerData: {e.Message}";
+                return false;
+            }
+        }
+
+        private static void EnsureHosterPolicy(string hosterPolicyPath)
+        {
+            string policy = File.Exists(hosterPolicyPath)
+                ? File.ReadAllText(hosterPolicyPath)
+                : string.Empty;
+
+            if (Regex.IsMatch(
+                policy,
+                @"(?im)^\s*gamedir_for_configs\s*:\s*true\s*$"))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(policy) &&
+                !policy.EndsWith("\r\n", StringComparison.Ordinal) &&
+                !policy.EndsWith("\n", StringComparison.Ordinal))
+            {
+                policy += Environment.NewLine;
+            }
+
+            policy += "gamedir_for_configs: true" + Environment.NewLine;
+            File.WriteAllText(hosterPolicyPath, policy);
+        }
+
+        private static bool JunctionPointsToDirectory(string linkPath, string targetPath)
+        {
+            string probeName = ".wgsm-scpsl-" + Guid.NewGuid().ToString("N") + ".tmp";
+            string targetProbe = Path.Combine(targetPath, probeName);
+            string linkProbe = Path.Combine(linkPath, probeName);
+
+            try
+            {
+                File.WriteAllText(targetProbe, string.Empty);
+                return File.Exists(linkProbe);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(targetProbe))
+                        File.Delete(targetProbe);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static bool CreateDirectoryJunction(string linkPath, string targetPath, out string error)
+        {
+            error = null;
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/d /c mklink /J \"{linkPath}\" \"{targetPath}\"",
+                WorkingDirectory = Path.GetDirectoryName(linkPath),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            try
+            {
+                using (Process junctionProcess = Process.Start(startInfo))
+                {
+                    if (junctionProcess == null)
+                    {
+                        error = $"Could not create the ServerData junction: {linkPath}";
+                        return false;
+                    }
+
+                    string standardOutput = junctionProcess.StandardOutput.ReadToEnd();
+                    string standardError = junctionProcess.StandardError.ReadToEnd();
+                    junctionProcess.WaitForExit();
+
+                    if (junctionProcess.ExitCode != 0)
+                    {
+                        string details = string.IsNullOrWhiteSpace(standardError)
+                            ? standardOutput.Trim()
+                            : standardError.Trim();
+
+                        error = $"Could not create the ServerData junction from \"{linkPath}\" to \"{targetPath}\". {details}";
+                        return false;
+                    }
+                }
+
+                if (!Directory.Exists(linkPath) ||
+                    (File.GetAttributes(linkPath) & FileAttributes.ReparsePoint) == 0 ||
+                    !JunctionPointsToDirectory(linkPath, targetPath))
+                {
+                    error = $"ServerData junction creation could not be verified: {linkPath}";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                error = $"Could not create the ServerData junction: {e.Message}";
+                return false;
+            }
         }
 
         private string BuildParameters(bool embedConsole)
