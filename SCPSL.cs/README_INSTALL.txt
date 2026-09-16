@@ -1,5 +1,5 @@
 WindowsGSM.SCPSL - MeFriendos build
-Version 0.1.1
+Version 0.1.2
 
 INSTALL
 =======
@@ -17,21 +17,20 @@ INSTALL
 5. First start / EULA:
    The plugin does NOT auto-accept Northwood's EULA.
    Read the EULA and accept it through LocalAdmin yourself.
-   If you have already reviewed and accepted it and intentionally want non-interactive
-   startup, LocalAdmin V2 also supports its own --acceptEULA option.
 
-6. The plugin keeps SCP:SL data inside the matching WindowsGSM server instance.
-   For server ID 12, the data directory is:
-   F:\WindowsGSM\servers\12\ServerData\
+6. SCP:SL data stays with the WindowsGSM server files.
+   The plugin uses Northwood's own hoster mode and stores the generated data in:
 
-   The plugin automatically enables Northwood's hoster policy and links:
-   serverfiles\AppData -> ..\ServerData
+   <WindowsGSM>\servers\<server ID>\serverfiles\AppData\
+
+   Example for server ID 12:
+   F:\WindowsGSM\servers\12\serverfiles\AppData\
 
    Main gameplay config:
-   ServerData\config\<port>\config_gameplay.txt
+   serverfiles\AppData\config\<port>\config_gameplay.txt
 
    LabAPI:
-   ServerData\SCP Secret Laboratory\LabAPI\
+   serverfiles\AppData\SCP Secret Laboratory\LabAPI\
 
 7. For a public server, create a narrow firewall rule for the selected UDP port only.
    Default: 7777/UDP
@@ -39,9 +38,11 @@ INSTALL
 
 NOTES
 =====
+- The plugin automatically creates serverfiles\AppData and enables Northwood's
+  gamedir_for_configs hoster policy.
+- No junctions or Windows user-profile redirection are used.
 - WindowsGSM's Server Name field does not directly set SCP:SL's public server name.
   Set server_name in config_gameplay.txt.
-- Default max_players is currently 20 in Northwood's gameplay config.
 - LabAPI is bundled with current SCP:SL Dedicated Server builds.
 - Server Start Param is for LocalAdmin V2 arguments. Do not put the port there;
   WindowsGSM passes Server Port as LocalAdmin's first positional argument.
