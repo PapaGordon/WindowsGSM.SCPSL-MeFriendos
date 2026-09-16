@@ -20,7 +20,7 @@ namespace WindowsGSM.Plugins
             name = "WindowsGSM.SCPSL",
             author = "MeFriendos",
             description = "WindowsGSM plugin for SCP: Secret Laboratory Dedicated Server (MeFriendos build)",
-            version = "0.1.1",
+            version = "0.1.2",
             url = "https://github.com/PapaGordon/WindowsGSM.SCPSL-MeFriendos",
             color = "#C91F37"
         };
@@ -75,9 +75,8 @@ namespace WindowsGSM.Plugins
                 return Task.FromResult<Process>(null);
             }
 
-            // Northwood's hoster policy makes LocalAdmin, SCP:SL and LabAPI use a local
-            // "AppData" directory. Keep that directory outside serverfiles through a
-            // per-instance junction so all generated data stays beside the game files.
+            // Use Northwood's own hoster mode. This keeps LocalAdmin, SCP:SL and LabAPI
+            // data in serverfiles\AppData instead of the Windows user profile.
             if (!PrepareServerLocalData(serverFiles, out string dataError))
             {
                 Error = dataError;
@@ -111,9 +110,6 @@ namespace WindowsGSM.Plugins
 
             if (embedConsole)
             {
-                // LocalAdmin V2 accepts stdin when redirected and can mirror SCPSL stdout/stderr
-                // into its own stream through --printStd. This gives WindowsGSM useful live output
-                // while still allowing a graceful "exit" command on shutdown.
                 process.StartInfo.RedirectStandardInput = true;
                 process.StartInfo.RedirectStandardOutput = true;
                 process.StartInfo.RedirectStandardError = true;
@@ -170,7 +166,6 @@ namespace WindowsGSM.Plugins
                     return;
                 }
 
-                // Preferred path for WindowsGSM Embedded Console.
                 try
                 {
                     if (process.StartInfo.RedirectStandardInput)
@@ -186,7 +181,6 @@ namespace WindowsGSM.Plugins
                 {
                 }
 
-                // Native LocalAdmin console fallback.
                 try
                 {
                     process.Refresh();
@@ -201,7 +195,6 @@ namespace WindowsGSM.Plugins
                 {
                 }
 
-                // Last resort only. LocalAdmin's official "exit" command is always attempted first.
                 try
                 {
                     process.Refresh();
@@ -224,8 +217,6 @@ namespace WindowsGSM.Plugins
                 return false;
             }
 
-            // LocalAdmin requires the port as its first positional argument. Prevent users from
-            // accidentally replacing it with another positional port in Server Start Param.
             string extra = (_serverData.ServerParam ?? string.Empty).Trim();
             if (Regex.IsMatch(extra, @"^\d{1,5}(?:\s|$)"))
             {
@@ -242,59 +233,50 @@ namespace WindowsGSM.Plugins
 
             try
             {
-                DirectoryInfo serverFilesDirectory = new DirectoryInfo(serverFiles);
-                if (serverFilesDirectory.Parent == null)
+                string appDataPath = Path.Combine(serverFiles, "AppData");
+                string hosterPolicyPath = Path.Combine(serverFiles, "hoster_policy.txt");
+
+                // v0.1.1 used a junction to a sibling ServerData directory. If that exact
+                // plugin-created junction is still present, replace it with a normal AppData folder.
+                if (Directory.Exists(appDataPath))
                 {
-                    error = $"Could not determine the WindowsGSM server directory from: {serverFiles}";
-                    return false;
-                }
-
-                string serverRoot = serverFilesDirectory.Parent.FullName;
-                string serverData = Path.Combine(serverRoot, "ServerData");
-                string appDataLink = Path.Combine(serverFiles, "AppData");
-                string hosterPolicy = Path.Combine(serverFiles, "hoster_policy.txt");
-
-                Directory.CreateDirectory(serverData);
-                EnsureHosterPolicy(hosterPolicy);
-
-                if (Directory.Exists(appDataLink))
-                {
-                    FileAttributes attributes = File.GetAttributes(appDataLink);
+                    FileAttributes attributes = File.GetAttributes(appDataPath);
                     if ((attributes & FileAttributes.ReparsePoint) != 0)
                     {
-                        if (!JunctionPointsToDirectory(appDataLink, serverData))
+                        DirectoryInfo serverFilesDirectory = new DirectoryInfo(serverFiles);
+                        string oldServerData = serverFilesDirectory.Parent == null
+                            ? null
+                            : Path.Combine(serverFilesDirectory.Parent.FullName, "ServerData");
+
+                        if (string.IsNullOrWhiteSpace(oldServerData) ||
+                            !Directory.Exists(oldServerData) ||
+                            !JunctionPointsToDirectory(appDataPath, oldServerData))
                         {
-                            error = $"SCP:SL AppData junction already exists but does not point to this server's ServerData directory: {appDataLink}";
+                            error = $"serverfiles\\AppData is a junction that is not managed by this plugin: {appDataPath}";
                             return false;
                         }
 
-                        return true;
+                        Directory.Delete(appDataPath);
                     }
-
-                    if (Directory.GetFileSystemEntries(appDataLink).Length != 0)
-                    {
-                        error = $"SCP:SL local AppData already exists and is not managed by this plugin: {appDataLink}. Move or remove it before starting so ServerData can be linked safely.";
-                        return false;
-                    }
-
-                    Directory.Delete(appDataLink);
                 }
-                else if (File.Exists(appDataLink))
+                else if (File.Exists(appDataPath))
                 {
-                    error = $"Cannot create SCP:SL local AppData because a file already exists at: {appDataLink}";
+                    error = $"Cannot create SCP:SL local AppData because a file already exists at: {appDataPath}";
                     return false;
                 }
 
-                return CreateDirectoryJunction(appDataLink, serverData, out error);
+                Directory.CreateDirectory(appDataPath);
+                EnsureHosterPolicy(hosterPolicyPath);
+                return true;
             }
             catch (UnauthorizedAccessException e)
             {
-                error = $"Could not prepare SCP:SL ServerData. Start WindowsGSM as administrator. {e.Message}";
+                error = $"Could not prepare SCP:SL local AppData. Start WindowsGSM as administrator. {e.Message}";
                 return false;
             }
             catch (Exception e)
             {
-                error = $"Could not prepare SCP:SL ServerData: {e.Message}";
+                error = $"Could not prepare SCP:SL local AppData: {e.Message}";
                 return false;
             }
         }
@@ -305,12 +287,8 @@ namespace WindowsGSM.Plugins
                 ? File.ReadAllText(hosterPolicyPath)
                 : string.Empty;
 
-            if (Regex.IsMatch(
-                policy,
-                @"(?im)^\s*gamedir_for_configs\s*:\s*true\s*$"))
-            {
+            if (Regex.IsMatch(policy, @"(?im)^\s*gamedir_for_configs\s*:\s*true\s*$"))
                 return;
-            }
 
             if (!string.IsNullOrEmpty(policy) &&
                 !policy.EndsWith("\r\n", StringComparison.Ordinal) &&
@@ -347,63 +325,6 @@ namespace WindowsGSM.Plugins
             }
         }
 
-        private static bool CreateDirectoryJunction(string linkPath, string targetPath, out string error)
-        {
-            error = null;
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "cmd.exe",
-                Arguments = $"/d /c mklink /J \"{linkPath}\" \"{targetPath}\"",
-                WorkingDirectory = Path.GetDirectoryName(linkPath),
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            try
-            {
-                using (Process junctionProcess = Process.Start(startInfo))
-                {
-                    if (junctionProcess == null)
-                    {
-                        error = $"Could not create the ServerData junction: {linkPath}";
-                        return false;
-                    }
-
-                    string standardOutput = junctionProcess.StandardOutput.ReadToEnd();
-                    string standardError = junctionProcess.StandardError.ReadToEnd();
-                    junctionProcess.WaitForExit();
-
-                    if (junctionProcess.ExitCode != 0)
-                    {
-                        string details = string.IsNullOrWhiteSpace(standardError)
-                            ? standardOutput.Trim()
-                            : standardError.Trim();
-
-                        error = $"Could not create the ServerData junction from \"{linkPath}\" to \"{targetPath}\". {details}";
-                        return false;
-                    }
-                }
-
-                if (!Directory.Exists(linkPath) ||
-                    (File.GetAttributes(linkPath) & FileAttributes.ReparsePoint) == 0 ||
-                    !JunctionPointsToDirectory(linkPath, targetPath))
-                {
-                    error = $"ServerData junction creation could not be verified: {linkPath}";
-                    return false;
-                }
-
-                return true;
-            }
-            catch (Exception e)
-            {
-                error = $"Could not create the ServerData junction: {e.Message}";
-                return false;
-            }
-        }
-
         private string BuildParameters(bool embedConsole)
         {
             var parameters = new StringBuilder();
@@ -411,8 +332,6 @@ namespace WindowsGSM.Plugins
 
             string serverParameters = (_serverData.ServerParam ?? string.Empty).Trim();
 
-            // These are LocalAdmin V2 flags, not SCPSL.exe flags. They are added only when
-            // WindowsGSM Embedded Console is enabled and never override explicit user values.
             if (embedConsole)
             {
                 AppendFlagIfMissing(parameters, serverParameters, "--printStd");
@@ -495,7 +414,6 @@ namespace WindowsGSM.Plugins
                     applications.GetType().InvokeMember(
                         "Remove", BindingFlags.InvokeMethod, null, applications, new object[] { programPath });
 
-                    // Reacquire and verify after removal instead of assuming success.
                     applications = currentProfile.GetType().InvokeMember(
                         "AuthorizedApplications", BindingFlags.GetProperty, null, currentProfile, null);
                     entries = applications as IEnumerable;
